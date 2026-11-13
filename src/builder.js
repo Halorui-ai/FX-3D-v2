@@ -4,7 +4,7 @@ import * as TX from './textures.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildSite } from './site.js';
 
-class Acc {
+export class Acc {
   constructor() { this.p = []; this.n = []; this.uv = []; this.i = []; }
   quad(a, b, c, d, ua, ub, uc, ud) {
     const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
@@ -94,7 +94,8 @@ export function build(DATA, ctx) {
   const ROOFKIND = { pv: 'white', pvd: 'conc', eq: 'eq', white: 'white', conc: 'conc', beige: 'beige', dark: 'dark', pale: 'pale', metal: 'metal', blue: 'blue', teal: 'teal' };
 
   // shared accumulators for all the small stuff (merged -> few draw calls)
-  const A = { equip: new Acc(), chill: new Acc(), parapet: new Acc(), pv: new Acc(), pvd: new Acc() };
+  const newA = () => ({ equip: new Acc(), chill: new Acc(), parapet: new Acc(), pv: new Acc(), pvd: new Acc() });
+  let A = newA();                    // shared; production / office blocks get their own set so one block can be opened up
   const extraAcc = new Map();
   const acc = (key) => { if (!extraAcc.has(key)) extraAcc.set(key, new Acc()); return extraAcc.get(key); };
 
@@ -149,6 +150,7 @@ export function build(DATA, ctx) {
     if (b.id === 'K17') kind = 'orange';
     if (b.id === 'B16' || b.id === 'K15') kind = 'ware';
     const wa = new Acc(), ra = new Acc();
+    const own = b.type === 'P' || b.type === 'O', A0 = A; if (own) A = newA();
     const gable = ['pale', 'metal'].includes(b.roof);
     const vault = b.roof === 'blue';
     const rk = ROOFKIND[b.roof] || 'conc';
@@ -183,6 +185,14 @@ export function build(DATA, ctx) {
     const mw = new THREE.Mesh(wa.geometry(), facadeMat(kind, b.floors, H, bi));
     const mr = new THREE.Mesh(ra.geometry(), roofMat(rk));
     for (const m of [mw, mr]) { m.castShadow = m.receiveShadow = true; m.userData.b = b; pick.push(m); g.add(m); }
+    mw.userData.part = 'wall'; mr.userData.part = 'roof';
+    if (own) {
+      for (const [k, mat] of [['equip', equipMat], ['chill', chillMat], ['parapet', parapetMat], ['pv', pvMat.pv], ['pvd', pvMat.pvd]]) {
+        if (A[k].empty) continue;
+        const m = new THREE.Mesh(A[k].geometry(), mat); m.castShadow = k !== 'pv' && k !== 'pvd' && k !== 'chill'; m.receiveShadow = true; m.userData.part = 'roof'; g.add(m);
+      }
+      A = A0;
+    }
     root.add(g);
     b._mesh = g;
     // label

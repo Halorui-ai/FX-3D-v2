@@ -30,3 +30,7 @@ docs/check/*
 docs/check/wall/*
 !docs/check/wall/ov_K.jpg
 !docs/check/wall/ov_F.jpg
+!docs/check/shot_twin_all.png
+!docs/check/shot_twin_floor.png
+!docs/check/shot_twin_close.png
+!docs/check/shot_twin_gate.png

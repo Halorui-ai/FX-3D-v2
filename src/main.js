@@ -9,6 +9,7 @@ import DATA from './data/campus.json';
 import groundUrl from './data/ground.png';
 import { build } from './builder.js';
 import { Environment, WEATHER } from './env.js';
+import { Twin } from './twin/twin.js';
 
 const $ = (id) => document.getElementById(id);
 const hash = Object.fromEntries(location.hash.replace(/^#/, '').split('&').filter(Boolean).map((kv) => kv.split('=')));
@@ -39,6 +40,7 @@ scene.add(W.root);
 W.root.updateMatrixWorld(true);
 const env = new Environment(renderer, scene);
 const toWorld = (u, s, y = 0) => new THREE.Vector3(u, y, s).applyMatrix4(W.root.matrixWorld);
+let twin = null;
 
 // ---------------------------------------------------------------- post-processing
 let composer = null, gtao = null, bloom = null, useAO = hash.ao !== '0';
@@ -55,8 +57,9 @@ try {
     const skip = [...env.noAO, W.labels, W.zoneLabels, W.roadsG, W.lamps.children[2], W.site.gateLabels, ...(W.site.rail ? [W.site.rail] : [])];
     const ov = gtao.overrideVisibility.bind(gtao), rv = gtao.restoreVisibility.bind(gtao);
     let hidden = false;
-    gtao.overrideVisibility = () => { ov(); if (hidden) return; hidden = true; for (const o of skip) { o.userData._v = o.visible; o.visible = false; } };
-    gtao.restoreVisibility = () => { if (hidden) { hidden = false; for (const o of skip) o.visible = o.userData._v; } rv(); };
+    let cur = skip;
+    gtao.overrideVisibility = () => { ov(); if (hidden) return; hidden = true; cur = twin ? [...skip, ...twin.noAO()] : skip; for (const o of cur) { o.userData._v = o.visible; o.visible = false; } };
+    gtao.restoreVisibility = () => { if (hidden) { hidden = false; for (const o of cur) o.visible = o.userData._v; } rv(); };
   }
   gtao.enabled = useAO;
   composer.addPass(gtao);
@@ -71,13 +74,14 @@ function onEnv(e) {
   for (const m of W.facadeMats) m.emissiveIntensity = n * 1.25;
   W.headM.emissiveIntensity = n * 9; W.glowM.opacity = n * 0.26; W.lamps.children[2].visible = n > 0.02;
   W.groundUniforms.uWet.value = e.wet;
+  if (twin) twin.setNight(n);
   if (gtao) gtao.blendIntensity = e.fogBase > 0.0004 ? 0.25 : 0.9;
   for (const m of W.wetMats) { if (m.userData.r0 === undefined) m.userData.r0 = m.roughness; m.roughness = m.userData.r0 * (1 - 0.5 * e.wet); }
   if (bloom) { bloom.threshold = THREE.MathUtils.lerp(1.5, 0.55, n); bloom.strength = THREE.MathUtils.lerp(0.14, 0.38, n); }
   $('sunInfo').textContent = e.elDeg > -0.8 ? `太阳高度 ${e.elDeg.toFixed(0)}°　方位 ${e.azDeg.toFixed(0)}°` : '夜间';
 }
 const MONTH_DOY = [15, 46, 74, 105, 135, 166, 196, 227, 258, 288, 319, 349];
-function setTime(h) { env.state.hours = h; $('time').value = h; const hh = Math.floor(h), mm = Math.round((h - hh) * 60); $('timeLabel').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; env.apply(onEnv); }
+function setTime(h) { if (twin) twin.onTime(h * 60); env.state.hours = h; $('time').value = h; const hh = Math.floor(h), mm = Math.round((h - hh) * 60); $('timeLabel').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; env.apply(onEnv); }
 function setWeather(k) { env.state.weather = k; document.querySelectorAll('#weather button').forEach((b) => b.classList.toggle('on', b.dataset.k === k)); env.apply(onEnv); }
 function setMonth(m) { env.state.doy = MONTH_DOY[m]; $('month').value = m; env.apply(onEnv); }
 
@@ -129,18 +133,25 @@ function select(b) {
   const [u0, s0, u1, s1] = b.r; hl.scale.set(u1 - u0 + 2, b.h + 4, s1 - s0 + 2); hl.position.set((u0 + u1) / 2, (b.h + 4) / 2, (s0 + s1) / 2); hl.visible = true;
   const [lon, lat] = usToLonLat((u0 + u1) / 2, (s0 + s1) / 2);
   $('info').style.display = 'block';
-  $('info').innerHTML = `<h3>${b.id}</h3><div>${b.zone} 区　${b.typeName}</div><div>${b.floors} 层　约 ${b.h.toFixed(0)} m 高</div><div>平面 ${(u1 - u0).toFixed(0)} × ${(s1 - s0).toFixed(0)} m</div><div class="dim">${lat.toFixed(6)}°N　${lon.toFixed(6)}°E</div><div class="dim">双击飞到该楼</div>`;
+  $('info').innerHTML = `<h3>${b.id}</h3><div>${b.zone} 区　${b.typeName}</div><div>${b.floors} 层　约 ${b.h.toFixed(0)} m 高</div><div>平面 ${(u1 - u0).toFixed(0)} × ${(s1 - s0).toFixed(0)} m</div><div class="dim">${lat.toFixed(6)}°N　${lon.toFixed(6)}°E</div><div class="dim">双击飞到该楼</div>` + (twin && twin.canOpen(b) ? '<button id="btnExplode" style="margin-top:8px;width:100%">展开楼层 · 看门岗</button>' : '');
+  const be = $('btnExplode'); if (be) be.onclick = () => { hl.visible = false; twin.open(b); };
 }
 function pickAt(ev) { mouse.set(ev.clientX / window.innerWidth * 2 - 1, -(ev.clientY / window.innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera); const h = ray.intersectObjects(W.pick, false)[0]; return h ? h.object.userData.b : null; }
 renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
-renderer.domElement.addEventListener('pointerup', (e) => { if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5) select(pickAt(e)); });
-renderer.domElement.addEventListener('dblclick', (e) => { const b = pickAt(e); if (!b) return; const c = toWorld((b.r[0] + b.r[2]) / 2, (b.r[1] + b.r[3]) / 2, b.h * 0.4); flyTo(c.clone().add(new THREE.Vector3(-70, 110, 210)), c); });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!(downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5)) return;
+  if (twin && twin.active) { mouse.set(e.clientX / window.innerWidth * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1); ray.setFromCamera(mouse, camera); twin.click(ray); return; }
+  select(pickAt(e));
+});
+renderer.domElement.addEventListener('dblclick', (e) => { if (twin && twin.active) return; const b = pickAt(e); if (!b) return; const c = toWorld((b.r[0] + b.r[2]) / 2, (b.r[1] + b.r[3]) / 2, b.h * 0.4); flyTo(c.clone().add(new THREE.Vector3(-70, 110, 210)), c); });
 $('search').addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; const q = e.target.value.trim().toUpperCase(); const b = DATA.buildings.find((x) => x.id === q); if (b) { select(b); const c = toWorld((b.r[0] + b.r[2]) / 2, (b.r[1] + b.r[3]) / 2, b.h * 0.4); flyTo(c.clone().add(new THREE.Vector3(-90, 150, 260)), c); } });
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
   if (composer) composer.setSize(window.innerWidth, window.innerHeight);
 });
+
+twin = new Twin({ DATA, W, camera, controls, flyTo, toWorld });
 
 // ---------------------------------------------------------------- start-up state (URL hash lets the self-check script take fixed shots)
 setMonth(hash.m ? +hash.m : 9);
@@ -154,6 +165,7 @@ if (hash.walls === '0') { W.site.walls.visible = false; $('lyWalls').checked = f
 if (hash.zone) zoneView(decodeURIComponent(hash.zone), 0);
 else if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); }
 else flyTo(...VIEWS[hash.view || 'oblique'](), 0);
+if (hash.twin) { const b = DATA.buildings.find((x) => x.id === hash.twin.toUpperCase()); if (b && twin.open(b, true)) { if (hash.floor) twin.setFloor(+hash.floor - 1); if (hash.gate !== undefined) { const gs = twin.data().byBld.get(b.id); if (gs[+hash.gate]) twin.selectGate(gs[+hash.gate].id); } if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); } else { fly = null; twin.frame(0); } } }
 
 const clock = new THREE.Clock();
 let frames = 0;
@@ -171,12 +183,14 @@ function loop() {
   scene.fog.density = env.fogBase / (1 + camera.position.y / 2600);   // thinner haze when looking down from high up
   env.tick(dt, camera);
   // label sizes stay readable: fade the small ones out when far away
-  const showSmall = dist < 2600; if (W.labels.visible !== (showSmall && $('lyLabels').checked)) W.labels.visible = showSmall && $('lyLabels').checked;
-  const gl = dist < 1100 && $('lyLabels').checked && W.site.walls.visible; if (W.site.gateLabels.visible !== gl) W.site.gateLabels.visible = gl;
+  twin.tick();
+  const showSmall = dist < 2600 && !twin.active; if (W.labels.visible !== (showSmall && $('lyLabels').checked)) W.labels.visible = showSmall && $('lyLabels').checked;
+  const gl = dist < 1100 && $('lyLabels').checked && W.site.walls.visible && !twin.active; if (W.site.gateLabels.visible !== gl) W.site.gateLabels.visible = gl;
   const zl = dist > 1300 && $('lyZones').checked; if (W.zoneLabels.visible !== zl) W.zoneLabels.visible = zl;
   $('needle').style.transform = `rotate(${controls.getAzimuthalAngle() * 180 / Math.PI}deg)`;
   if (composer) composer.render(dt); else renderer.render(scene, camera);
+  if (frames === 39 && hash.shot) console.log('render-info', JSON.stringify({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures }));
   if (++frames === 40) { document.title = '富士康郑州厂区 3D · ready'; document.body.dataset.ready = '1'; }
 }
 loop();
-window.__app = { scene, camera, controls, env, W, DATA, setTime, setWeather, flyTo, toWorld };
+window.__app = { scene, camera, controls, env, W, DATA, setTime, setWeather, flyTo, toWorld, twin };
