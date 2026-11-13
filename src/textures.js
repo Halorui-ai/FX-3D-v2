@@ -332,7 +332,7 @@ export function glow() {
   g.fillStyle = gr; g.fillRect(0, 0, S, S); return tex(c, true, false);
 }
 export function labelSprite(text, big) {
-  const fs = big ? 120 : 64, [c, g] = mk(big ? 256 : 256, big ? 160 : 96);
+  const fs = big ? 120 : 64, [c, g] = mk(big ? 512 : 256, big ? 160 : 96);
   g.font = `700 ${fs}px "Segoe UI","Microsoft YaHei",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.lineWidth = big ? 14 : 10; g.strokeStyle = 'rgba(10,16,24,0.85)'; g.strokeText(text, c.width / 2, c.height / 2);
   g.fillStyle = big ? '#ffd76a' : '#ffffff'; g.fillText(text, c.width / 2, c.height / 2);

@@ -180,6 +180,13 @@ def main():
         s = any(0 < b["r"][1] - o["r"][3] < 40 for b in col)
         if not (n and s):
             problems.append(f"office {o['id']} not sandwiched (north={n}, south={s})")
+    for rd in out["roads"]:                       # sports courts must not sit on a road
+        for i in range(len(rd["line"]) - 1):
+            a, b = rd["line"][i], rd["line"][i + 1]
+            rr = [min(a[0], b[0]) - rd["w"] / 2, min(a[1], b[1]) - rd["w"] / 2, max(a[0], b[0]) + rd["w"] / 2, max(a[1], b[1]) + rd["w"] / 2]
+            for c in out["courts"]:
+                if overlap(rr, c["r"], 0.3):
+                    problems.append(f"court {c['zone']} {c['kind']} {c['r']} sits on road {rd['line']}")
     for g in missing:
         problems.append(f"gate {g[0]} {g[1]} {g[2]} is not on a wall line")
     for pk in out["park"]:

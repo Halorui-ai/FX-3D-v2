@@ -66,19 +66,24 @@ const ROOM_P = [['office', '办公室', 3], ['lab', '测试实验室', 3], ['sto
 const ROOM_O = [['office', '办公区', 7], ['meet', '会议室', 2.5], ['mgr', '主管室', 1.5], ['tea', '茶水间', 0.8], ['file', '资料室', 0.7], ['train', '培训室', 0.8]];
 function pickW(R, tab) { let s = 0; for (const t of tab) s += t[2]; let v = R() * s; for (const t of tab) { v -= t[2]; if (v <= 0) return t; } return tab[0]; }
 
+// Where a floor gate sits: the n-th gate of a side is spread evenly west->east / north->south; names without a direction are "loose".
+export function gatePositions(b, gates) {
+  const W = b.r[2] - b.r[0], D = b.r[3] - b.r[1], per = {}, out = new Map(); let loose = 0;
+  for (const g of gates) if (g.side) per[g.side] = Math.max(per[g.side] || 0, g.idx);
+  for (const g of gates) {
+    const q = {};
+    if (g.side === 'N' || g.side === 'S') { q.x = W * g.idx / (per[g.side] + 1); q.z = g.side === 'N' ? 0 : D; q.nx = 0; q.nz = g.side === 'N' ? 1 : -1; }
+    else if (g.side) { q.z = D * g.idx / (per[g.side] + 1); q.x = g.side === 'W' ? 0 : W; q.nz = 0; q.nx = g.side === 'W' ? 1 : -1; }
+    else { q.x = -9; q.z = D - 6 - 11 * loose++; q.nx = 1; q.nz = 0; q.loose = true; }
+    out.set(g.id, q);
+  }
+  return out;
+}
 export function makeLayout(b, floor, gates, seed) {
   const W = b.r[2] - b.r[0], D = b.r[3] - b.r[1], R = TX.rng(seed * 131 + floor * 977 + 5), isO = b.type === 'O' || D < 36;
   const L = { W, D, floor, isO, rooms: [], lobbies: [], aisles: [], zones: [], lines: [], cols: [], gates: [], R };
   // gates: position on the outer wall from the direction in the name; the n-th gate of a side is spread evenly west->east / north->south
-  const per = {}; for (const g of gates) if (g.side) per[g.side] = Math.max(per[g.side] || 0, g.idx);
-  let loose = 0;
-  for (const g of gates) {
-    const q = { g };
-    if (g.side === 'N' || g.side === 'S') { q.x = W * g.idx / (per[g.side] + 1); q.z = g.side === 'N' ? 0 : D; q.nx = 0; q.nz = g.side === 'N' ? 1 : -1; }
-    else if (g.side) { q.z = D * g.idx / (per[g.side] + 1); q.x = g.side === 'W' ? 0 : W; q.nz = 0; q.nx = g.side === 'W' ? 1 : -1; }
-    else { q.x = -9; q.z = D - 6 - 11 * loose++; q.nx = 1; q.nz = 0; q.loose = true; }
-    L.gates.push(q);
-  }
+  const gp = gatePositions(b, gates); for (const g of gates) L.gates.push(Object.assign({ g }, gp.get(g.id)));
   const on = (s) => L.gates.filter((q) => q.g.side === s);
   // split [a0,a1] into rooms, leaving a lobby of half-width hw at every gate coordinate
   const band = (a0, a1, cuts, hw, wmin, wmax, each) => {

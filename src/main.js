@@ -91,6 +91,7 @@ $('time').oninput = (e) => setTime(+e.target.value);
 $('month').onchange = (e) => setMonth(+e.target.value);
 for (const [id, h] of [['tDawn', 6.6], ['tNoon', 12], ['tDusk', 17.4], ['tNight', 21.5]]) $(id).onclick = () => setTime(h);
 $('lyLabels').onchange = (e) => { W.labels.visible = e.target.checked; };
+$('ctlToggle').onclick = () => document.body.classList.toggle('ctl-min');
 
 $('lyTrees').onchange = (e) => { W.trees.visible = e.target.checked; };
 $('lyRoads').onchange = (e) => { W.roadsG.visible = e.target.checked; };
@@ -165,7 +166,7 @@ if (hash.walls === '0') { W.site.walls.visible = false; $('lyWalls').checked = f
 if (hash.zone) zoneView(decodeURIComponent(hash.zone), 0);
 else if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); }
 else flyTo(...VIEWS[hash.view || 'oblique'](), 0);
-if (hash.twin) { const b = DATA.buildings.find((x) => x.id === hash.twin.toUpperCase()); if (b && twin.open(b, true)) { if (hash.floor) twin.setFloor(+hash.floor - 1); if (hash.gate !== undefined) { const gs = twin.data().byBld.get(b.id); if (gs[+hash.gate]) twin.selectGate(gs[+hash.gate].id); } if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); } else { fly = null; twin.frame(0); } } }
+if (hash.twin) { const b = DATA.buildings.find((x) => x.id === hash.twin.toUpperCase()); if (b && twin.open(b, true)) { if (hash.floor) twin.setFloor(+hash.floor - 1); if (hash.gate !== undefined) { const gs = twin.data().byBld.get(b.id); if (hash.gate === 'late') { const g = gs.find((x) => twin.stats.S.get(x.id).lateList.some((y) => twin.data().gates.get(y.o.from).zone !== b.zone)) || gs.find((x) => twin.stats.S.get(x.id).lateList.length); if (g) twin.selectGate(g.id); } else if (gs[+hash.gate]) twin.selectGate(gs[+hash.gate].id); if (hash.order !== undefined && twin.gateSel) { const s = twin.stats.S.get(twin.gateSel), L = [...s.lateList, ...s.incList, ...s.unrecvList]; if (L[+hash.order]) twin.selectOrder(L[+hash.order].o.id); } } if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); } else if (twin.orderSel) { fly = null; const r = twin.route.box, c = r.getCenter(new THREE.Vector3()), sz = r.getSize(new THREE.Vector3()), d = Math.max(sz.x * 1.0, sz.z * 1.45, 260) + 140, w = toWorld(c.x - d * 0.19, c.z + d * 0.04, 0); flyTo(w.clone().add(new THREE.Vector3(-0.1 * d, 0.82 * d, 0.56 * d)), w, 0); } else { fly = null; twin.frame(0); } } }
 
 const clock = new THREE.Clock();
 let frames = 0;
@@ -186,7 +187,7 @@ function loop() {
   twin.tick();
   const showSmall = dist < 2600 && !twin.active; if (W.labels.visible !== (showSmall && $('lyLabels').checked)) W.labels.visible = showSmall && $('lyLabels').checked;
   const gl = dist < 1100 && $('lyLabels').checked && W.site.walls.visible && !twin.active; if (W.site.gateLabels.visible !== gl) W.site.gateLabels.visible = gl;
-  const zl = dist > 1300 && $('lyZones').checked; if (W.zoneLabels.visible !== zl) W.zoneLabels.visible = zl;
+  const zl = dist > 1300 && $('lyZones').checked && !twin.active; if (W.zoneLabels.visible !== zl) W.zoneLabels.visible = zl;
   $('needle').style.transform = `rotate(${controls.getAzimuthalAngle() * 180 / Math.PI}deg)`;
   if (composer) composer.render(dt); else renderer.render(scene, camera);
   if (frames === 39 && hash.shot) console.log('render-info', JSON.stringify({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures }));

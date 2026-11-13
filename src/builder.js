@@ -298,12 +298,12 @@ export function build(DATA, ctx) {
   const cls = ctx.groundTex; cls.colorSpace = THREE.NoColorSpace; cls.anisotropy = 8; cls.flipY = true;
   const noise = TX.noiseTex();
   const gmat = std({ map: cls, roughness: 0.95 });
-  const gu = { uNoise: { value: noise }, uWet: { value: 0 }, uSize: { value: new THREE.Vector2(G.w * G.mpp, G.h * G.mpp) } };
+  const gu = { uNoise: { value: noise }, uWet: { value: 0 }, uDim: { value: 1 }, uSize: { value: new THREE.Vector2(G.w * G.mpp, G.h * G.mpp) } };
   gmat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, gu);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D uNoise; uniform float uWet; uniform vec2 uSize; float gWet;`)
+        uniform sampler2D uNoise; uniform float uWet; uniform float uDim; uniform vec2 uSize; float gWet;`)
       .replace('#include <map_fragment>', `
         vec4 cls = texture2D(map, vMapUv);
         float inside = step(0.0, vMapUv.x) * step(vMapUv.x, 1.0) * step(0.0, vMapUv.y) * step(vMapUv.y, 1.0);
@@ -330,7 +330,7 @@ export function build(DATA, ctx) {
         gc = mix(gc, asph, smoothstep(0.3, 0.7, cls.b));
         float puddle = smoothstep(0.45, 0.7, n1.b * 0.6 + n2.r * 0.4) * (1.0 - smoothstep(0.25, 0.7, cls.g));
         gWet = uWet * (0.45 + 0.55 * puddle);
-        gc *= 1.0 - 0.38 * uWet;
+        gc *= (1.0 - 0.38 * uWet) * uDim;
         diffuseColor.rgb = gc;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, 0.08, gWet);`);
@@ -411,7 +411,7 @@ export function build(DATA, ctx) {
   for (const s of DATA.sites) {
     if (!s.zone) continue;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TX.labelSprite(s.zone + '区', true), depthTest: false, transparent: true, fog: false }));
-    sp.scale.set(96, 96 * 160 / 256, 1); sp.position.set((s.r[0] + s.r[2]) / 2, 60, (s.r[1] + s.r[3]) / 2); sp.renderOrder = 11; zoneLabels.add(sp);
+    sp.scale.set(192, 60, 1); sp.position.set((s.r[0] + s.r[2]) / 2, 60, (s.r[1] + s.r[3]) / 2); sp.renderOrder = 11; zoneLabels.add(sp);
   }
   root.add(labels, zoneLabels);
 
