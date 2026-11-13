@@ -1,0 +1,32 @@
+# 依赖和缓存
+node_modules/
+__pycache__/
+*.pyc
+.claude/
+
+# 旧工程（WorkBuddy 版），不属于这次重建
+历史版本/
+
+# 卫星瓦片拼图（约 140 MB，可用 tools/build_mosaic.py 重新下载）
+data/ortho/
+data/zones/
+
+# 根目录原始资料：个人截图和实拍照片（App 截图带工号水印），不入库
+/*.jpg
+/*.jpeg
+/*.png
+
+# 自检图：只保留成品截图和叠合核对图，描图底图（卫星图裁片）不入库
+docs/check/*
+!docs/check/shot_final_default.png
+!docs/check/shot_final2_ui.png
+!docs/check/sheet_weather.jpg
+!docs/check/shot_s1.png
+!docs/check/shot_s5.png
+!docs/check/shot_s10.png
+!docs/check/ov_west.jpg
+!docs/check/ov_east.jpg
+!docs/check/wall/
+docs/check/wall/*
+!docs/check/wall/ov_K.jpg
+!docs/check/wall/ov_F.jpg

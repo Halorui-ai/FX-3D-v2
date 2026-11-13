@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>富士康郑州厂区 3D</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b0f14;font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#e8eef5}
+  canvas{display:block}
+  .panel{position:fixed;background:rgba(14,20,28,.78);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.10);border-radius:10px;padding:12px 14px;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+  #ctl{left:14px;top:14px;width:268px}
+  #ctl h1{font-size:15px;margin:0 0 2px;font-weight:600;letter-spacing:.5px}
+  #ctl .sub{color:#8fa3b8;font-size:11.5px;margin-bottom:10px}
+  .row{margin:9px 0 3px;color:#9fb2c6;font-size:11.5px;display:flex;justify-content:space-between;align-items:center}
+  .btns{display:flex;flex-wrap:wrap;gap:5px}
+  button{background:rgba(255,255,255,.07);color:#e8eef5;border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:4px 9px;font-size:12.5px;cursor:pointer;font-family:inherit}
+  button:hover{background:rgba(255,255,255,.16)} button.on{background:#2f7fd6;border-color:#58a3f2}
+  input[type=range]{width:100%;accent-color:#58a3f2;margin:2px 0}
+  select,input[type=text]{background:rgba(255,255,255,.07);color:#e8eef5;border:1px solid rgba(255,255,255,.13);border-radius:6px;padding:3px 6px;font-size:12.5px;font-family:inherit}
+  select option{color:#111}
+  label.ck{display:inline-flex;align-items:center;gap:4px;margin-right:9px;font-size:12.5px;white-space:nowrap}
+  #timeLabel{font-size:15px;color:#fff;font-variant-numeric:tabular-nums}
+  #sunInfo{color:#8fa3b8;font-size:11.5px}
+  #info{right:14px;top:14px;min-width:170px;display:none}
+  #info h3{margin:0 0 6px;font-size:20px;color:#7fd6ff}
+  #info div{margin:2px 0} .dim{color:#8fa3b8;font-size:11.5px}
+  #compass{position:fixed;right:22px;bottom:22px;width:78px;height:78px;border-radius:50%;background:rgba(14,20,28,.72);border:1px solid rgba(255,255,255,.18)}
+  #needle{position:absolute;inset:0;transition:transform .05s linear}
+  #needle::before{content:"";position:absolute;left:50%;top:9px;margin-left:-7px;border:7px solid transparent;border-bottom:26px solid #ff5a4d}
+  #needle::after{content:"";position:absolute;left:50%;bottom:9px;margin-left:-7px;border:7px solid transparent;border-top:26px solid #c9d3de}
+  #needle b{position:absolute;left:0;right:0;top:-19px;text-align:center;font-size:13px;color:#ff8a80}
+  #hint{left:50%;bottom:12px;transform:translateX(-50%);padding:6px 12px;font-size:11.5px;color:#9fb2c6}
+  body.noui .panel, body.noui #compass{display:none!important}
+</style>
+</head>
+<body>
+<div id="ctl" class="panel">
+  <h1>富士康郑州综保区厂区</h1>
+  <div class="sub">按卫星影像逐栋描绘 · WGS-84 · 正北朝上</div>
+  <div class="row"><span>时间　<span id="timeLabel">10:00</span></span><span id="sunInfo"></span></div>
+  <input id="time" type="range" min="0" max="24" step="0.1" value="10">
+  <div class="btns"><button id="tDawn">清晨</button><button id="tNoon">正午</button><button id="tDusk">黄昏</button><button id="tNight">夜晚</button>
+    <select id="month"><option value="0">1月</option><option value="1">2月</option><option value="2">3月</option><option value="3">4月</option><option value="4">5月</option><option value="5">6月</option><option value="6">7月</option><option value="7">8月</option><option value="8">9月</option><option value="9">10月</option><option value="10">11月</option><option value="11">12月</option></select></div>
+  <div class="row">天气</div><div id="weather" class="btns"></div>
+  <div class="row">视角</div><div id="views" class="btns"></div>
+  <div class="row">分区</div><div id="zones" class="btns"></div>
+  <div class="row">图层</div>
+  <div><label class="ck"><input id="lyLabels" type="checkbox" checked>栋号</label><label class="ck"><input id="lyZones" type="checkbox" checked>分区名</label><label class="ck"><input id="lyTrees" type="checkbox" checked>树木</label><label class="ck"><input id="lyRoads" type="checkbox" checked>道路标线</label><label class="ck"><input id="lyWalls" type="checkbox" checked>围墙大门</label><label class="ck"><input id="lyCars" type="checkbox" checked>车辆</label><label class="ck"><input id="lyShadow" type="checkbox" checked>阴影</label><label class="ck"><input id="lyAO" type="checkbox" checked>环境光遮蔽</label></div>
+  <div class="row">查找栋号</div><input id="search" type="text" placeholder="例如 K07，回车" style="width:150px">
+</div>
+<div id="info" class="panel"></div>
+<div id="compass"><div id="needle"><b>N</b></div></div>
+<div id="hint" class="panel">左键拖动平移 · 右键拖动旋转 · 滚轮缩放 · 单击楼栋看信息 · 双击飞到楼栋</div>
+<script src="app.js"></script>
+</body>
+</html>
