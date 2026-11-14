@@ -150,7 +150,7 @@ export function facade(kind, floors, H, seed = 1) {
       for (let i = 0; i < 8; i++) if (r() < 0.5) { g.fillStyle = '#56606a'; g.fillRect(X(i * 6 + 1.5), Y(Math.min(H - 1.2, 4.2)), X(3), SY(1.3)); }
     }
   } else if (kind === 'white') {                           // rendered white wall with orange accent blocks (K17 style) / stair cores
-    g.fillStyle = '#d6d5cf'; g.fillRect(0, 0, W, Hp);
+    g.fillStyle = '#b4b5b0'; g.fillRect(0, 0, W, Hp);
     blotches(g, W, Hp, r, 40, true, 0.08, 20, 90); streaks(g, W, Hp, r, 30, 0.12);
     const fh = Math.max(3.6, H / Math.max(1, Math.round(H / 4.5)));
     for (let y = 1.2; y + 1.8 < H - 0.5; y += fh) for (let i = 0; i < 12; i++) if (r() < 0.55) {
@@ -159,7 +159,7 @@ export function facade(kind, floors, H, seed = 1) {
     }
     g.fillStyle = 'rgba(40,40,38,0.3)'; for (let i = 0; i <= 8; i++) g.fillRect(X(i * 6) - 1, 0, 2, Hp);
   } else if (kind === 'orange') {
-    g.fillStyle = '#d7d6d0'; g.fillRect(0, 0, W, Hp);
+    g.fillStyle = '#bdbdb7'; g.fillRect(0, 0, W, Hp);
     for (let i = 0; i < 4; i++) { g.fillStyle = '#d99a2b'; g.fillRect(X(i * 12 + 2), Y(H * 0.92), X(6), SY(H * 0.45)); }
     blotches(g, W, Hp, r, 40, true, 0.08, 20, 90);
     for (let y = 1.2; y + 1.6 < H - 0.5; y += 3.8) for (let i = 0; i < 16; i++) if (r() < 0.6) {
@@ -369,4 +369,87 @@ export function tagSprite(text) {                            // small green tag 
   g.lineWidth = 9; g.strokeStyle = 'rgba(8,20,12,0.9)'; g.strokeText(text, 192, 48);
   g.fillStyle = '#9df0b0'; g.fillText(text, 192, 48);
   return tex(c, true, false);
+}
+
+// ---------------------------------------------------------------- photo-based factory facades (third pass)
+// Read off the user's K-zone photos: light grey painted concrete, dark tile ground floor with dock doors under a
+// projecting canopy, strip windows with white frames on the long sides, dark painted bands on the end walls, a dark
+// set-back attic band under the roof.  Returns colour + emissive + bump + roughness maps (drawn in metres, y up).
+function layer(w, h, H, fill) { const [c, g] = mk(w, h); g.fillStyle = fill; g.fillRect(0, 0, w, h); g.setTransform(w / FACADE_W, 0, 0, -h / H, 0, h); return [c, g]; }
+export function facade2(kind, floors, H, seed = 1) {
+  const r = rng(seed * 6151 + floors * 131 + kind.length * 29 + Math.round(H));
+  const [cc, C] = layer(2048, 1024, H, '#000'), [ce, E] = layer(1024, 512, H, '#000'), [cb, B] = layer(1024, 512, H, '#808080'), [cr, Q] = layer(1024, 512, H, '#ececec');
+  const all = (x, y, w, h, col, o = {}) => { C.fillStyle = col; C.fillRect(x, y, w, h); if (o.e) { E.fillStyle = o.e; E.fillRect(x, y, w, h); } if (o.b !== undefined) { B.fillStyle = grey(o.b); B.fillRect(x, y, w, h); } if (o.r !== undefined) { Q.fillStyle = grey(o.r); Q.fillRect(x, y, w, h); } };
+  const px = (fn) => { C.save(); C.setTransform(1, 0, 0, 1, 0, 0); fn(C); C.restore(); };
+  const office = kind === 'office', end = kind === 'prodEnd', nP = FACADE_W / 6;
+  // painted concrete panels
+  for (let i = 0; i < nP; i++) { const v = 160 + (r() - 0.5) * 13; all(i * 6, 0, 6.02, H, `rgb(${v | 0},${(v + 1) | 0},${(v - 3) | 0})`); }
+  px((g) => { blotches(g, 2048, 1024, r, 90, true, 0.09, 30, 160); blotches(g, 2048, 1024, r, 40, false, 0.07, 30, 140); streaks(g, 2048, 1024, r, 70, 0.13); speckle(g, 2048, 1024, r, 5200, 80, 200, 0.10); });
+  for (let y = 1.22; y < H; y += 1.22) { all(0, y, FACADE_W, 0.025, 'rgba(40,40,38,0.10)', { b: 112 }); }
+  for (let i = 0; i <= nP; i++) all(i * 6 - 0.03, 0, 0.06, H, 'rgba(40,40,38,0.42)', { b: 84 });
+  const glass = (x, y, w, h, lit, warm) => {
+    const gr = C.createLinearGradient(0, y + h, 0, y); gr.addColorStop(0, '#8498aa'); gr.addColorStop(1, '#465564');
+    C.fillStyle = gr; C.fillRect(x, y, w, h); B.fillStyle = grey(70); B.fillRect(x, y, w, h); Q.fillStyle = grey(34); Q.fillRect(x, y, w, h);
+    if (lit) { const b = 175 + r() * 80; E.fillStyle = warm ? `rgb(${b | 0},${b * 0.9 | 0},${b * 0.72 | 0})` : `rgb(${b * 0.86 | 0},${b * 0.93 | 0},${b | 0})`; E.fillRect(x, y, w, h); if (r() < 0.5) { E.fillStyle = 'rgba(0,0,0,0.3)'; E.fillRect(x + r() * w * 0.7, y, w * 0.12, h); } }
+  };
+  const unit = (x, y, w, h, cols, lit, warm) => {            // white-framed multi-pane window
+    all(x - 0.07, y - 0.07, w + 0.14, h + 0.14, '#33383d', { b: 96 }); all(x, y, w, h, '#d5dadd', { b: 100, r: 150 });
+    const pw = w / cols, on = lit && r() < 0.93;
+    for (let k = 0; k < cols; k++) { glass(x + k * pw + 0.05, y + 0.05, pw - 0.1, h * 0.62 - 0.07, on, warm); glass(x + k * pw + 0.05, y + h * 0.62 + 0.03, pw - 0.1, h * 0.38 - 0.08, on, warm); }
+    const st = C.createLinearGradient(0, y, 0, y - 2.2); st.addColorStop(0, 'rgba(30,30,26,0.22)'); st.addColorStop(1, 'rgba(30,30,26,0)');
+    C.fillStyle = st; for (let k = 0; k < 2; k++) C.fillRect(x + r() * w * 0.8, y - 2.2, 0.25 + r() * 0.8, 2.2);
+  };
+  const g0 = office ? 0 : 4.7, a0 = office ? H - 0.5 : H - 3.4, n = office ? floors : Math.max(1, floors - 1), sh = (a0 - g0) / n;
+  if (!office) {                                              // dark tile ground floor
+    all(0, 0, FACADE_W, g0, '#3a3d40', { b: 118, r: 140 });
+    for (let x = 0; x < FACADE_W; x += 0.3) all(x, 0, 0.02, g0, 'rgba(0,0,0,0.16)');
+    for (let y = 0.3; y < g0; y += 0.3) all(0, y, FACADE_W, 0.02, 'rgba(0,0,0,0.16)');
+    px((g) => blotches(g, 2048, 1024, r, 0, true, 0, 1, 2));
+    for (let i = 0; i < nP; i++) {
+      const x = i * 6, q = r();
+      if (q < (end ? 0.34 : 0.3)) {                           // roller / lift door
+        all(x + 1.0, 0, 4.0, 3.9, '#9ea3a6', { b: 100, r: 110 }); for (let y = 0.25; y < 3.9; y += 0.25) all(x + 1.0, y, 4.0, 0.03, 'rgba(0,0,0,0.22)');
+        all(x + 0.85, 0, 0.15, 1.1, '#d9b92c'); all(x + 5.0, 0, 0.15, 1.1, '#d9b92c');
+        px((g) => { g.fillStyle = 'rgba(110,60,30,0.12)'; for (let k = 0; k < 6; k++) g.fillRect((x + 1 + r() * 3.6) * 2048 / FACADE_W, 1024 - (r() * 3.5) * 1024 / H, 30 * r(), 46 * r()); });
+      } else if (!end && q < 0.66) unit(x + 0.7, 1.05, 4.6, 2.5, 4, r() < 0.8, r() < 0.3);
+      else if (q < 0.8) { all(x + 2.2, 0, 1.3, 2.3, '#6d7a84', { b: 104, r: 120 }); all(x + 2.3, 2.4, 1.1, 0.35, '#b3261e', { e: r() < 0.5 ? '#801a14' : undefined }); }
+    }
+    all(0, g0 - 0.55, FACADE_W, 0.55, 'rgba(0,0,0,0.38)');    // shade under the canopy
+    all(0, g0, FACADE_W, 0.42, '#cfd0ca', { b: 150 });
+  }
+  for (let k = 0; k < n; k++) {
+    const base = g0 + (office ? 0 : 0.42) + k * sh, sill = base + Math.max(0.9, (sh - 2.4) * 0.42), wh = Math.min(2.3, sh - 1.5);
+    all(0, base, FACADE_W, 0.03, 'rgba(30,30,28,0.3)', { b: 96 });
+    if (end) {                                                // dark painted band, the odd small window / door
+      all(0, sill, FACADE_W, wh, '#3e4144', { r: 226 });
+      px((g) => { g.fillStyle = 'rgba(190,190,185,0.06)'; for (let j = 0; j < 30; j++) g.fillRect(r() * 2048, 1024 - (sill + r() * wh) * 1024 / H, 30 + r() * 120, 2 + r() * 5); });
+      for (let i = 0; i < nP; i += 2) if (r() < 0.6) unit(i * 6 + 4.2 + r() * 2, sill + 0.25, 1.3, wh - 0.5, 2, r() < 0.7, false);
+      for (let i = 1; i < nP; i += 3) all(i * 6 + 1.5, base + 0.05, 1.1, 2.2, '#7a858c', { b: 100, r: 120 });
+    } else for (let i = 0; i < nP; i++) {
+      const x = i * 6, q = r(), lit = r() < (office ? 0.6 : 0.9);
+      if (q < 0.08) { all(x + 0.5, sill, 5.0, wh, '#565a5d', { b: 90 }); for (let y = sill + 0.12; y < sill + wh; y += 0.12) all(x + 0.5, y, 5.0, 0.03, 'rgba(0,0,0,0.3)'); }
+      else if (q < 0.9 || office) { unit(x + 0.32, sill, 2.56, wh, 4, lit, office && r() < 0.4); unit(x + 3.12, sill, 2.56, wh, 4, lit, office && r() < 0.4); }
+      if (r() < 0.12) all(x + 2.4, sill - 0.75, 0.9, 0.6, '#d8d9d5', { b: 160 });      // AC outdoor unit
+    }
+  }
+  if (!office) {                                              // attic band under the roof
+    if (end) { all(0, a0, FACADE_W, H - a0, '#4c4e4d', { b: 110 }); for (let i = 0; i < nP; i++) all(i * 6 + 0.5, a0 + 0.4, 5.0, H - a0 - 1.3, '#595c5a', { b: 100 }); }
+    else { all(0, a0, FACADE_W, H - a0, '#25282b', { b: 52, r: 46 }); for (let x = 0; x < FACADE_W; x += 1.0) all(x, a0, 0.05, H - a0, 'rgba(200,205,210,0.16)'); all(0, a0 + (H - a0) * 0.5, FACADE_W, 0.05, 'rgba(200,205,210,0.16)');
+      for (let i = 0; i <= nP; i++) all(i * 6 - 0.3, a0, 0.6, H - a0, '#4a4c4c', { b: 128, r: 232 }); }
+    all(0, a0 - 0.18, FACADE_W, 0.18, '#bfc0ba', { b: 150 });
+    all(0, H - 0.95, FACADE_W, 0.6, '#4f514f', { b: 128, r: 232 });
+    px((g) => streaks(g, 2048, 140, r, 40, 0.2));
+  }
+  all(0, H - 0.35, FACADE_W, 0.35, '#c9cac4', { b: 150, r: 232 });
+  const t = { map: tex(cc), emissiveMap: tex(ce), bumpMap: tex(cb, false), roughnessMap: tex(cr, false) };
+  t.map.anisotropy = 16; return t;
+}
+export function signTex(text) {                                // building number, dark blue letters as on the K07 photo
+  const [c, g] = mk(64 * text.length + 32, 96); g.font = '900 86px "Arial Black","Segoe UI",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#27458f'; g.fillText(text, c.width / 2, 52); const t = tex(c, true, false); t.anisotropy = 8; return t;
+}
+export function innerMarks() {                                // campus roads: white edge lines + dashed centre line (tile = 12 m)
+  const W = 128, H = 256, [c, g] = mk(W, H); g.clearRect(0, 0, W, H); g.fillStyle = 'rgba(232,232,224,0.8)';
+  g.fillRect(3, 0, 2.5, H); g.fillRect(W - 5.5, 0, 2.5, H); g.fillRect(W / 2 - 1.5, 0, 3, H * 0.45);
+  const t = tex(c); t.anisotropy = 16; return t;
 }

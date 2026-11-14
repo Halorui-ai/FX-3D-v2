@@ -1,7 +1,7 @@
 // Geometry: everything is built in campus-grid metres (x = U, z = S, y up); the root group is rotated to true north.
 import * as THREE from 'three';
 import * as TX from './textures.js';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildSite } from './site.js';
 
 export class Acc {
@@ -46,6 +46,7 @@ export class Acc {
     const f = rot ? (u, s) => [s / tile, u / tile] : (u, s) => [u / tile, s / tile];
     this.quad([u0, y, s1], [u1, y, s1], [u1, y, s0], [u0, y, s0], f(u0, s1), f(u1, s1), f(u1, s0), f(u0, s0));
   }
+  wall(a, b, y0, y1, texW, off = 0) { const len = Math.hypot(b[0] - a[0], b[1] - a[1]); this.quad([a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]], [off, 0], [off + len / texW, 0], [off + len / texW, 1], [off, 1]); }
   box(r, y0, y1, texW, tile) { this.walls(r, y0, y1, texW); this.top(r, y1, tile); }
   geometry() {
     const g = new THREE.BufferGeometry();
@@ -70,10 +71,11 @@ export function build(DATA, ctx) {
   // ------------------------------------------------ material cache
   const fcache = new Map();
   function facadeMat(kind, floors, H, seed = 1) {
-    const key = `${kind}|${floors}|${Math.round(H)}|${seed % 3}`;
+    const key = `${kind}|${floors}|${Math.round(H)}|${['prod', 'prodEnd', 'office'].includes(kind) ? seed % 2 : seed % 3}`;
     if (!fcache.has(key)) {
-      const t = TX.facade(kind, floors, H, seed % 3 + 1);
-      const m = std({ map: t.map, emissiveMap: t.emissiveMap, emissive: 0xffffff, emissiveIntensity: 0, roughness: kind === 'ware' || kind === 'metal' ? 0.62 : 0.93 });
+      const f2 = kind === 'prod' || kind === 'prodEnd' || kind === 'office', t = f2 ? TX.facade2(kind, floors, H, seed % 2 + 1) : TX.facade(kind, floors, H, seed % 3 + 1);
+      const m = std({ map: t.map, emissiveMap: t.emissiveMap, emissive: 0xffffff, emissiveIntensity: 0, roughness: kind === 'ware' || kind === 'metal' ? 0.62 : f2 ? 1.0 : 0.93 });
+      if (f2) { m.bumpMap = t.bumpMap; m.bumpScale = 2.2; m.roughnessMap = t.roughnessMap; m.envMapIntensity = 1.25; }
       facadeMats.push(m); wetMats.push(m); fcache.set(key, m);
     }
     return fcache.get(key);
@@ -90,7 +92,7 @@ export function build(DATA, ctx) {
   const pvMat = { pv: std({ map: TX.pv(false), roughness: 0.28, metalness: 0.55 }), pvd: std({ map: TX.pv(true), roughness: 0.28, metalness: 0.55 }) };
   const equipMat = std({ color: 0x8f9494, roughness: 0.7, metalness: 0.3 });
   const chillMat = std({ map: TX.chillerTop(), roughness: 0.65, metalness: 0.3 });
-  const parapetMat = std({ color: 0xcfcec8, roughness: 0.9 });
+  const parapetMat = std({ color: 0xb3b3ad, roughness: 0.9 });
   const ROOFKIND = { pv: 'white', pvd: 'conc', eq: 'eq', white: 'white', conc: 'conc', beige: 'beige', dark: 'dark', pale: 'pale', metal: 'metal', blue: 'blue', teal: 'teal' };
 
   // shared accumulators for all the small stuff (merged -> few draw calls)
@@ -154,8 +156,36 @@ export function build(DATA, ctx) {
     const gable = ['pale', 'metal'].includes(b.roof);
     const vault = b.roof === 'blue';
     const rk = ROOFKIND[b.roof] || 'conc';
-    wa.walls(b.r, 0, H, TX.FACADE_W, (bi * 0.173) % 1);
-    if (gable) {                                   // E-W ridge, two slopes + gable-end triangles
+    const fancy = kind === 'prod' || kind === 'office';
+    const we = new Acc(), da = new Acc(), dk = new Acc(), sg = new Acc();
+    if (fancy) {                                   // photo-based shell: different long / end walls + canopy, downpipes, balconies, number sign
+      const off = (bi * 0.173) % 1, lng = W >= D, prod = kind === 'prod';
+      const sides = [{ a: [u0, s1], d: [1, 0], n: [0, 1], L: W, lg: lng }, { a: [u1, s0], d: [-1, 0], n: [0, -1], L: W, lg: lng }, { a: [u1, s1], d: [0, -1], n: [1, 0], L: D, lg: !lng }, { a: [u0, s0], d: [0, 1], n: [-1, 0], L: D, lg: !lng }];
+      const obx = (acc, sd, t0, t1, d0, d1, y0, y1, bottom) => {
+        const p = [sd.a[0] + sd.d[0] * t0 + sd.n[0] * d0, sd.a[1] + sd.d[1] * t0 + sd.n[1] * d0], q = [sd.a[0] + sd.d[0] * t1 + sd.n[0] * d1, sd.a[1] + sd.d[1] * t1 + sd.n[1] * d1];
+        const rr = [Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.max(p[0], q[0]), Math.max(p[1], q[1])]; acc.box(rr, y0, y1, 4, 4);
+        if (bottom) acc.quad([rr[0], y0, rr[1]], [rr[2], y0, rr[1]], [rr[2], y0, rr[3]], [rr[0], y0, rr[3]], [0, 0], [1, 0], [1, 1], [0, 1]);
+      };
+      const g0 = 4.7, a0 = H - 3.4, ns = Math.max(1, b.floors - 1), sh = (a0 - g0) / ns;
+      sides.forEach((sd, si) => {
+        const e = [sd.a[0] + sd.d[0] * sd.L, sd.a[1] + sd.d[1] * sd.L];
+        (sd.lg || !prod ? wa : we).wall(sd.a, e, 0, H, TX.FACADE_W, off + si * 0.37);
+        if (sd.lg) {
+          obx(da, sd, 0, sd.L, 0, prod ? 2.4 : 1.4, prod ? g0 : 3.5, prod ? g0 + 0.3 : 3.72, true);
+          for (let t = 6; t < sd.L - 1; t += 12) { obx(da, sd, t - 0.08, t + 0.08, 0.05, 0.21, prod ? g0 + 0.3 : 3.72, prod ? a0 : H - 0.5); if (prod) obx(da, sd, t - 0.08, t + 0.08, 0.05, 2.3, g0 + 0.3, g0 + 0.46); }
+        } else if (prod) {
+          for (let k = 0; k < ns; k++) {           // service balconies with railings on the end walls
+            const y = g0 + k * sh, t0 = sd.L * 0.12, t1 = sd.L * 0.88;
+            obx(da, sd, t0, t1, 0, 1.3, y, y + 0.16, true);
+            if (k > 0) { for (const yy of [0.55, 1.1]) obx(dk, sd, t0, t1, 1.24, 1.29, y + yy, y + yy + 0.05); for (let t = t0; t <= t1 + 0.01; t += 1.8) obx(dk, sd, t, t + 0.05, 1.24, 1.29, y + 0.16, y + 1.1); obx(dk, sd, t0, t0 + 0.05, 0, 1.29, y + 1.1, y + 1.15); obx(dk, sd, t1, t1 + 0.05, 0, 1.29, y + 1.1, y + 1.15); }
+          }
+        }
+        if (prod && (!sd.lg || si === 0)) {        // building number at the top corner, as in the K07 photo
+          const sw = 2.3 * (64 * b.id.length + 32) / 96, t0 = 1.6, p = (t, y) => [sd.a[0] + sd.d[0] * t + sd.n[0] * 0.07, y, sd.a[1] + sd.d[1] * t + sd.n[1] * 0.07];
+          sg.quad(p(t0, H - 3.15), p(t0 + sw, H - 3.15), p(t0 + sw, H - 0.85), p(t0, H - 0.85), [0, 0], [1, 0], [1, 1], [0, 1]);
+        }
+      });
+    } else wa.walls(b.r, 0, H, TX.FACADE_W, (bi * 0.173) % 1);    if (gable) {                                   // E-W ridge, two slopes + gable-end triangles
       const rise = Math.min(3.2, D * 0.045), zm = (s0 + s1) / 2, t = TX.ROOF_TILE, y1 = H + rise;
       ra.quad([u0, H, s1], [u1, H, s1], [u1, y1, zm], [u0, y1, zm], [s1 / t, u0 / t], [s1 / t, u1 / t], [zm / t, u1 / t], [zm / t, u0 / t]);
       ra.quad([u1, H, s0], [u0, H, s0], [u0, y1, zm], [u1, y1, zm], [s0 / t, u1 / t], [s0 / t, u0 / t], [zm / t, u0 / t], [zm / t, u1 / t]);
@@ -186,7 +216,12 @@ export function build(DATA, ctx) {
     const mr = new THREE.Mesh(ra.geometry(), roofMat(rk));
     for (const m of [mw, mr]) { m.castShadow = m.receiveShadow = true; m.userData.b = b; pick.push(m); g.add(m); }
     mw.userData.part = 'wall'; mr.userData.part = 'roof';
-    if (own) {
+    if (fancy) {
+      const add = (a, mat, shadow = true) => { if (a.empty) return; const m = new THREE.Mesh(a.geometry(), mat); m.castShadow = shadow; m.receiveShadow = true; m.userData.part = 'wall'; m.userData.b = b; g.add(m); return m; };
+      const me = add(we, facadeMat('prodEnd', b.floors, H, bi)); if (me) pick.push(me);
+      add(da, parapetMat); add(dk, equipMat);
+      add(sg, new THREE.MeshStandardMaterial({ map: TX.signTex(b.id), transparent: true, alphaTest: 0.35, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), false);
+    }    if (own) {
       for (const [k, mat] of [['equip', equipMat], ['chill', chillMat], ['parapet', parapetMat], ['pv', pvMat.pv], ['pvd', pvMat.pvd]]) {
         if (A[k].empty) continue;
         const m = new THREE.Mesh(A[k].geometry(), mat); m.castShadow = k !== 'pv' && k !== 'pvd' && k !== 'chill'; m.receiveShadow = true; m.userData.part = 'roof'; g.add(m);
@@ -323,7 +358,7 @@ export function build(DATA, ctx) {
         paved *= 1.0 - 0.32 * joint * clamp(0.6 / jw * 0.06, 0.0, 1.0);
         paved = mix(paved, paved * 0.72, smoothstep(0.62, 0.8, n2.r) * 0.6);              // oil / tyre stains
         vec3 grass = mix(vec3(0.050, 0.072, 0.024), vec3(0.095, 0.115, 0.042), n2.g * 0.6 + n3.r * 0.4);
-        vec3 asph = vec3(0.040, 0.041, 0.044) * (0.75 + 0.55 * (n2.b * 0.6 + n3.g * 0.4));
+        vec3 asph = vec3(0.060, 0.061, 0.063) * (0.75 + 0.55 * (n2.b * 0.6 + n3.g * 0.4));
         vec3 gc = mix(earth, paved, cls.r);
         float gmask = smoothstep(0.42, 0.56, cls.g + (n3.r - 0.5) * 0.35 + (n2.b - 0.5) * 0.25);
         gc = mix(gc, grass * (0.8 + 0.5 * n3.g), gmask);
@@ -344,6 +379,11 @@ export function build(DATA, ctx) {
   far.rotation.x = -Math.PI / 2; far.position.y = -3; root.add(far);
 
   // ------------------------------------------------ lane markings on municipal roads
+  { const a = new Acc(), it = TX.innerMarks();     // campus roads: edge lines + dashed centre line
+    for (const rd of DATA.roads) { if (rd.kind !== 'inner') continue; const w = rd.w * 0.46;
+      for (let i = 0; i + 1 < rd.line.length; i++) { const [ax, az] = rd.line[i], [bx, bz] = rd.line[i + 1], len = Math.hypot(bx - ax, bz - az), dx = (bx - ax) / len, dz = (bz - az) / len, nx = -dz * w, nz = dx * w;
+        a.quad([ax - nx, 0.05, az - nz], [ax + nx, 0.05, az + nz], [bx + nx, 0.05, bz + nz], [bx - nx, 0.05, bz - nz], [0, 0], [1, 0], [1, len / 12], [0, len / 12]); } }
+    const m = new THREE.Mesh(a.geometry(), new THREE.MeshStandardMaterial({ map: it, transparent: true, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, depthWrite: false, side: THREE.DoubleSide })); m.receiveShadow = true; m.name = 'innerMarks'; root.add(m); root.userData.innerMarks = m; }
   const laneTex = { 2: TX.laneMarks(2), 3: TX.laneMarks(3) };
   const roadsG = new THREE.Group(); roadsG.name = 'roads';
   for (const rd of DATA.roads) {
@@ -366,21 +406,25 @@ export function build(DATA, ctx) {
   root.add(roadsG);
 
   // ------------------------------------------------ trees (instanced, positions taken from the satellite image)
-  let crown = new THREE.IcosahedronGeometry(1, 2); crown.deleteAttribute('uv'); crown.deleteAttribute('normal'); crown = mergeVertices(crown, 1e-4);
-  { const p = crown.attributes.position, r = TX.rng(5);
-    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = 0.82 + 0.36 * Math.abs(Math.sin(x * 5.1 + y * 3.3) * Math.cos(z * 4.7 + y * 2.1)); void r; p.setXYZ(i, x * k, y * k * 0.9 + 0.75, z * k); }
-    crown.computeVertexNormals(); }
-  const tmat = std({ color: 0xffffff, roughness: 0.95 });
-  tmat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= 0.55 + 0.75 * smoothstep(-0.2, 1.0, normalize(vNormal).y * 0.5 + 0.5);'); };
-  const trees = new THREE.InstancedMesh(crown, tmat, DATA.trees.length);
+  // crown = a cluster of lumpy blobs (reads as foliage masses rather than one smooth ball)
+  let crown; { const parts = [], r = TX.rng(5);
+    for (const [ox, oy, oz, s] of [[0, 0.95, 0, 0.78], [0.5, 0.6, 0.15, 0.6], [-0.42, 0.66, 0.3, 0.58], [0.05, 0.55, -0.5, 0.6], [-0.2, 1.3, -0.1, 0.5], [0.3, 1.2, 0.3, 0.45]]) {
+      let g = new THREE.IcosahedronGeometry(s, 1); g.deleteAttribute('uv'); g.deleteAttribute('normal'); g = mergeVertices(g, 1e-4);
+      const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.8 + 0.4 * r(); p.setXYZ(i, p.getX(i) * k + ox, p.getY(i) * k * 0.85 + oy, p.getZ(i) * k + oz); }
+      g.computeVertexNormals(); parts.push(g.toNonIndexed()); }
+    crown = mergeGeometries(parts); crown.computeVertexNormals(); }  const tmat = std({ color: 0xffffff, roughness: 0.95 });
+  tmat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= 0.4 + 0.95 * smoothstep(-0.3, 1.0, normalize(vNormal).y * 0.5 + 0.5);'); };
+  const trees = new THREE.InstancedMesh(crown, tmat, DATA.trees.length), trunkPos = [];
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S3 = new THREE.Vector3(), col = new THREE.Color();
   DATA.trees.forEach((t, i) => {
     const rad = t[2] * (0.85 + R() * 0.3), hgt = rad * (1.25 + R() * 0.6);
-    Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * 6.28); V.set(t[0], rad * 0.25, t[1]); S3.set(rad, hgt, rad);
+    Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * 6.28); V.set(t[0], hgt * 0.3, t[1]); trunkPos.push([t[0], t[1], rad * 0.12 + 0.12, hgt * 0.75]); S3.set(rad, hgt, rad);
     M4.compose(V, Q, S3); trees.setMatrixAt(i, M4);
     col.setHSL(0.23 + R() * 0.08, 0.30 + R() * 0.2, 0.05 + R() * 0.055); trees.setColorAt(i, col);
   });
   trees.castShadow = true; trees.receiveShadow = true; trees.name = 'trees'; root.add(trees);
+  { const tg = new THREE.CylinderGeometry(0.7, 1, 1, 6); tg.translate(0, 0.5, 0); const trunks = new THREE.InstancedMesh(tg, std({ color: 0x4a3b2c, roughness: 1 }), trunkPos.length);
+    trunkPos.forEach((p, i) => { M4.compose(V.set(p[0], 0, p[1]), Q.identity(), S3.set(p[2], p[3], p[2])); trunks.setMatrixAt(i, M4); }); trunks.castShadow = true; trees.add(trunks); }
 
   // ------------------------------------------------ street lights along municipal roads (emissive heads + ground glow at night)
   const lampPos = [];

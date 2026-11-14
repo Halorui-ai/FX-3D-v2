@@ -10,6 +10,8 @@ import groundUrl from './data/ground.png';
 import { build } from './builder.js';
 import { Environment, WEATHER } from './env.js';
 import { Twin } from './twin/twin.js';
+import { Traffic } from './traffic.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 const $ = (id) => document.getElementById(id);
 const hash = Object.fromEntries(location.hash.replace(/^#/, '').split('&').filter(Boolean).map((kv) => kv.split('=')));
@@ -40,7 +42,8 @@ scene.add(W.root);
 W.root.updateMatrixWorld(true);
 const env = new Environment(renderer, scene);
 const toWorld = (u, s, y = 0) => new THREE.Vector3(u, y, s).applyMatrix4(W.root.matrixWorld);
-let twin = null;
+let twin = null, grade = null;
+const traffic = new Traffic(DATA, W.root);
 
 // ---------------------------------------------------------------- post-processing
 let composer = null, gtao = null, bloom = null, useAO = hash.ao !== '0';
@@ -66,6 +69,11 @@ try {
   bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.22, 0.5, 1.6);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // final grade: a little less saturation, a soft contrast curve, vignette and fine grain - takes the 'render' edge off
+  grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uAmt: { value: 1 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform sampler2D tDiffuse; uniform float uTime; uniform float uAmt; varying vec2 vUv; void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; vec3 o = c; float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, 0.84); c = mix(c, c * c * (3.0 - 2.0 * c), 0.3); c *= vec3(1.025, 1.0, 0.965); vec2 q = vUv - 0.5; c *= 1.0 - dot(q, q) * 0.5; float n = fract(sin(dot(gl_FragCoord.xy + uTime * 61.0, vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.03; gl_FragColor = vec4(mix(o, c, uAmt), 1.0); }' });
+  composer.addPass(grade);
 } catch (e) { console.warn('post-processing disabled', e); composer = null; }
 
 // ---------------------------------------------------------------- environment hooks
@@ -96,7 +104,8 @@ $('ctlToggle').onclick = () => document.body.classList.toggle('ctl-min');
 $('lyTrees').onchange = (e) => { W.trees.visible = e.target.checked; };
 $('lyRoads').onchange = (e) => { W.roadsG.visible = e.target.checked; };
 $('lyWalls').onchange = (e) => { W.site.walls.visible = e.target.checked; };
-$('lyCars').onchange = (e) => { W.site.vehicles.visible = e.target.checked; };
+$('lyCars').onchange = (e) => { W.site.vehicles.visible = traffic.group.visible = e.target.checked; };
+$('lyGrade').onchange = (e) => { if (grade) grade.enabled = e.target.checked; };
 $('lyAO').onchange = (e) => { if (gtao) gtao.enabled = e.target.checked; };
 $('lyShadow').onchange = (e) => { env.sun.castShadow = e.target.checked; };
 
@@ -161,7 +170,7 @@ setTime(hash.t ? +hash.t : 10);
 if (hash.labels === '0') { W.labels.visible = false; $('lyLabels').checked = false; }
 if (hash.zl === '0') { W.zoneLabels.visible = false; $('lyZones').checked = false; }
 if (hash.ui === '0') document.body.classList.add('noui');
-if (hash.cars === '0') { W.site.vehicles.visible = false; $('lyCars').checked = false; }
+if (hash.cars === '0') { traffic.group.visible = false; W.site.vehicles.visible = false; $('lyCars').checked = false; }
 if (hash.walls === '0') { W.site.walls.visible = false; $('lyWalls').checked = false; }
 if (hash.zone) zoneView(decodeURIComponent(hash.zone), 0);
 else if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); }
@@ -184,7 +193,7 @@ function loop() {
   scene.fog.density = env.fogBase / (1 + camera.position.y / 2600);   // thinner haze when looking down from high up
   env.tick(dt, camera);
   // label sizes stay readable: fade the small ones out when far away
-  twin.tick();
+  twin.tick(); traffic.tick(dt); if (grade) grade.uniforms.uTime.value = (frames % 97) / 97;
   const showSmall = dist < 2600 && !twin.active; if (W.labels.visible !== (showSmall && $('lyLabels').checked)) W.labels.visible = showSmall && $('lyLabels').checked;
   const gl = dist < 1100 && $('lyLabels').checked && W.site.walls.visible && !twin.active; if (W.site.gateLabels.visible !== gl) W.site.gateLabels.visible = gl;
   const zl = dist > 1300 && $('lyZones').checked && !twin.active; if (W.zoneLabels.visible !== zl) W.zoneLabels.visible = zl;

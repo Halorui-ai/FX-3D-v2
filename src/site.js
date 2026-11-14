@@ -1,6 +1,7 @@
 // Second pass: perimeter walls, gates, gate canopies and vehicles.  Same frame as builder.js (x = U, z = S, y up).
 import * as THREE from 'three';
 import * as TX from './textures.js';
+import * as TR from './traffic.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // box running from a to b (plan), half-thickness ht, between y0 and y1
@@ -184,30 +185,12 @@ export function buildSite(DATA, Acc, std, root, wetMats) {
       put('bike', x, z, hx, hz, 0.92 + R() * 0.16);
     }
   }
-  // light traffic on the municipal roads (generic: not taken from the image)
-  const G = DATA.ground, gx0 = G.u0 + 20, gx1 = G.u0 + G.w * G.mpp - 20, gz0 = G.s0 + 20, gz1 = G.s0 + G.h * G.mpp - 20;
-  for (const rd of DATA.roads) {
-    if (rd.kind !== 'main') continue;
-    const lanes = rd.w >= 30 ? 3 : rd.w >= 22 ? 2 : 1, lw = rd.w * 0.42 / lanes;
-    for (let i = 0; i + 1 < rd.line.length; i++) {
-      const [ax, az] = rd.line[i], [bx, bz] = rd.line[i + 1], len = Math.hypot(bx - ax, bz - az), dx = (bx - ax) / len, dz = (bz - az) / len;
-      for (const dir of [1, -1]) {
-        let d = 20 + R() * 90;
-        while (d < len - 10) {
-          const lane = Math.floor(R() * lanes), o = (lane + 0.5) * lw * dir, x = ax + dx * d - dz * o, z = az + dz * d + dx * o, k = R();
-          const blocked = (DATA.canopies || []).some((c) => x > c.r[0] - 9 && x < c.r[2] + 9 && z > c.r[1] - 9 && z < c.r[3] + 9);
-          if (!blocked && x > gx0 && x < gx1 && z > gz0 && z < gz1) put(k < 0.84 ? 'car' : k < 0.94 ? 'truck' : 'bus', x, z, dx * dir, dz * dir);
-          d += 45 + R() * 150;
-        }
-      }
-    }
-  }
   const vehicles = new THREE.Group(); vehicles.name = 'vehicles';
   const paint = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.22 });
   const matte = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.2 });
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
   const counts = {};
-  for (const [kind, geo, mat, shadow] of [['car', carGeo(), paint, true], ['bus', busGeo(), matte, true], ['truck', truckGeo(), matte, true], ['bike', bikeGeo(), matte, false]]) {
+  for (const [kind, geo, mat, shadow] of [['car', TR.carGeo(), paint, true], ['bus', TR.busGeo(), matte, true], ['truck', TR.semiGeo(), matte, true], ['bike', bikeGeo(), matte, false]]) {
     const arr = list[kind]; counts[kind] = arr.length; if (!arr.length) continue;
     const im = new THREE.InstancedMesh(geo, mat, arr.length);
     arr.forEach((v, i) => { Q.setFromAxisAngle(Y, v[2]); P.set(v[0], 0.02, v[1]); S.set(v[4], v[4], v[4]); M4.compose(P, Q, S); im.setMatrixAt(i, M4); col.setRGB(v[3][0], v[3][1], v[3][2]); im.setColorAt(i, col); });
