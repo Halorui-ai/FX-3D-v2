@@ -9,7 +9,7 @@ const out = join(here, '..', '富士康厂区3D');
 mkdirSync(out, { recursive: true });
 await build({
   entryPoints: [join(here, 'main.js')], bundle: true, format: 'iife', minify: true, target: 'es2020',
-  outfile: join(out, 'app.js'), loader: { '.png': 'dataurl', '.jpg': 'dataurl' }, logLevel: 'info',
+  outfile: join(out, 'app.js'), loader: { '.png': 'dataurl', '.jpg': 'dataurl', '.hdr': 'binary' }, logLevel: 'info',
 });
 copyFileSync(join(here, 'index.html'), join(out, 'index.html'));
 console.log('app.js', (statSync(join(out, 'app.js')).size / 1024).toFixed(0), 'KB ->', out);

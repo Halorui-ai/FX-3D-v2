@@ -1,5 +1,6 @@
 // Sky, sun, weather, rain. True-north frame: +x = east, -z = north.
 import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
 export const LAT = 34.5545, LON = 113.8518, TZ = 8;
 
@@ -135,8 +136,20 @@ export class Environment {
     // rain
     this.rain.visible = W.rain > 0; this.rainU.uOpacity.value = 0.09 * W.rain * (0.35 + 0.65 * day);
     this.night = night; this.day = day; this.wet = W.wet; this.elDeg = elD; this.azDeg = az * 180 / Math.PI;
+    if (this.hdri) { const m = this.hdri.material; m.opacity = 0.9 * day * (1 - grey) * (1 - 0.5 * golden); m.color.setRGB(0.8, 0.8 - 0.12 * golden, 0.8 - 0.25 * golden); this.hdri.rotation.y = Math.atan2(lightDir.x, lightDir.z) - this.hdriAng; }
     this.dirty = true;
     if (hooks) hooks(this);
+  }
+
+  // A photographed sky (Poly Haven, CC0) is blended into the image-based lighting so glass / metal reflect real clouds and a
+  // real sun.  It is rotated to the current sun azimuth and faded by daylight and weather; the procedural sky stays underneath.
+  setHDRI(bytes) {
+    const d = new RGBELoader().parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    const tex = new THREE.DataTexture(d.data, d.width, d.height, THREE.RGBAFormat, d.type); tex.flipY = true; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.colorSpace = THREE.LinearSRGBColorSpace; tex.needsUpdate = true;
+    let best = -1, bu = 0; for (let y = 0; y < d.height; y += 2) for (let x = 0; x < d.width; x += 2) { const i = (y * d.width + x) * 4, l = THREE.DataUtils.fromHalfFloat(d.data[i]) + THREE.DataUtils.fromHalfFloat(d.data[i + 1]) + THREE.DataUtils.fromHalfFloat(d.data[i + 2]); if (l > best) { best = l; bu = x / d.width; } }
+    this.hdriAng = Math.atan2(-Math.cos(bu * Math.PI * 2), Math.sin(bu * Math.PI * 2));
+    this.hdri = new THREE.Mesh(new THREE.SphereGeometry(9000, 48, 24), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, transparent: true, opacity: 0, depthWrite: false, depthTest: false, toneMapped: false, fog: false }));
+    this.hdri.renderOrder = 5; this.envScene.add(this.hdri); this.apply();
   }
 
   // shadow frustum follows the camera target; tight when zoomed in, wide when zoomed out

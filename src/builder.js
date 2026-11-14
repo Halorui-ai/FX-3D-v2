@@ -69,12 +69,13 @@ export function build(DATA, ctx) {
   const std = (o) => { const m = new THREE.MeshStandardMaterial(Object.assign({ roughness: 0.9, metalness: 0 }, o)); return m; };
 
   // ------------------------------------------------ material cache
-  const fcache = new Map();
+  const fcache = new Map(), floodPos = []; let ribTex = null;
   function facadeMat(kind, floors, H, seed = 1) {
     const key = `${kind}|${floors}|${Math.round(H)}|${['prod', 'prodEnd', 'office'].includes(kind) ? seed % 2 : seed % 3}`;
     if (!fcache.has(key)) {
       const f2 = kind === 'prod' || kind === 'prodEnd' || kind === 'office', t = f2 ? TX.facade2(kind, floors, H, seed % 2 + 1) : TX.facade(kind, floors, H, seed % 3 + 1);
       const m = std({ map: t.map, emissiveMap: t.emissiveMap, emissive: 0xffffff, emissiveIntensity: 0, roughness: kind === 'ware' || kind === 'metal' ? 0.62 : f2 ? 1.0 : 0.93 });
+      if (['ware', 'metal', 'shed'].includes(kind)) { m.bumpMap = ribTex || (ribTex = TX.ribs()); m.bumpScale = 0.7; m.metalness = 0.4; m.roughness = 0.5; m.envMapIntensity = 1.2; }
       if (f2) { m.bumpMap = t.bumpMap; m.bumpScale = 2.2; m.roughnessMap = t.roughnessMap; m.envMapIntensity = 1.25; }
       facadeMats.push(m); wetMats.push(m); fcache.set(key, m);
     }
@@ -172,6 +173,7 @@ export function build(DATA, ctx) {
         (sd.lg || !prod ? wa : we).wall(sd.a, e, 0, H, TX.FACADE_W, off + si * 0.37);
         if (sd.lg) {
           obx(da, sd, 0, sd.L, 0, prod ? 2.4 : 1.4, prod ? g0 : 3.5, prod ? g0 + 0.3 : 3.72, true);
+          if (prod) for (let t = 9; t < sd.L - 4; t += 18) floodPos.push([sd.a[0] + sd.d[0] * t + sd.n[0] * 2.2, sd.a[1] + sd.d[1] * t + sd.n[1] * 2.2, g0 - 0.12]);
           for (let t = 6; t < sd.L - 1; t += 12) { obx(da, sd, t - 0.08, t + 0.08, 0.05, 0.21, prod ? g0 + 0.3 : 3.72, prod ? a0 : H - 0.5); if (prod) obx(da, sd, t - 0.08, t + 0.08, 0.05, 2.3, g0 + 0.3, g0 + 0.46); }
         } else if (prod) {
           for (let k = 0; k < ns; k++) {           // service balconies with railings on the end walls
@@ -332,13 +334,14 @@ export function build(DATA, ctx) {
   const G = DATA.ground;
   const cls = ctx.groundTex; cls.colorSpace = THREE.NoColorSpace; cls.anisotropy = 8; cls.flipY = true;
   const noise = TX.noiseTex();
-  const gmat = std({ map: cls, roughness: 0.95 });
-  const gu = { uNoise: { value: noise }, uWet: { value: 0 }, uDim: { value: 1 }, uSize: { value: new THREE.Vector2(G.w * G.mpp, G.h * G.mpp) } };
+  const gmat = std({ map: cls, roughness: 0.95, normalMap: ctx.tex.asphN, normalScale: new THREE.Vector2(0.55, 0.55) }); ctx.tex.asphN.repeat.set(G.w * G.mpp / 5, G.h * G.mpp / 5);
+  const GT = ctx.tex; for (const t of [GT.asph, GT.conc, GT.asphN]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 16; } GT.asph.colorSpace = GT.conc.colorSpace = THREE.SRGBColorSpace;
+  const gu = { uAsph: { value: GT.asph }, uConc: { value: GT.conc }, uNoise: { value: noise }, uWet: { value: 0 }, uDim: { value: 1 }, uSize: { value: new THREE.Vector2(G.w * G.mpp, G.h * G.mpp) } };
   gmat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, gu);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D uNoise; uniform float uWet; uniform float uDim; uniform vec2 uSize; float gWet;`)
+        uniform sampler2D uNoise; uniform sampler2D uAsph; uniform sampler2D uConc; uniform float uWet; uniform float uDim; uniform vec2 uSize; float gWet;`)
       .replace('#include <map_fragment>', `
         vec4 cls = texture2D(map, vMapUv);
         float inside = step(0.0, vMapUv.x) * step(vMapUv.x, 1.0) * step(0.0, vMapUv.y) * step(vMapUv.y, 1.0);
@@ -352,13 +355,15 @@ export function build(DATA, ctx) {
         vec3 field = mix(vec3(0.20, 0.18, 0.11), vec3(0.085, 0.125, 0.045), smoothstep(0.38, 0.62, nF.r * 0.6 + nG.g * 0.4));
         field = mix(field, vec3(0.25, 0.22, 0.15), smoothstep(0.58, 0.72, nF.b * 0.7 + nG.r * 0.3));
         earth = mix(earth, field * (0.75 + 0.5 * nn), 0.8);
-        vec3 paved = vec3(0.245, 0.24, 0.225) * (0.72 + 0.5 * nn);
+        vec3 tC = mix(texture2D(uConc, wp / 6.0).rgb, texture2D(uConc, wp / 29.0 + 0.17).rgb, 0.4);
+        vec3 paved = mix(vec3(0.245, 0.24, 0.225), tC * 0.9, 0.75) * (0.78 + 0.4 * nn);
         vec2 jf = abs(fract(wp / 6.0) - 0.5) * 6.0; float jw = fwidth(wp.x) * 1.2 + 0.035;
         float joint = 1.0 - smoothstep(0.0, jw, min(jf.x, jf.y));
         paved *= 1.0 - 0.32 * joint * clamp(0.6 / jw * 0.06, 0.0, 1.0);
         paved = mix(paved, paved * 0.72, smoothstep(0.62, 0.8, n2.r) * 0.6);              // oil / tyre stains
         vec3 grass = mix(vec3(0.050, 0.072, 0.024), vec3(0.095, 0.115, 0.042), n2.g * 0.6 + n3.r * 0.4);
-        vec3 asph = vec3(0.060, 0.061, 0.063) * (0.75 + 0.55 * (n2.b * 0.6 + n3.g * 0.4));
+        vec3 tA = mix(texture2D(uAsph, wp / 5.0).rgb, texture2D(uAsph, wp / 23.0 + 0.31).rgb, 0.35);
+        vec3 asph = mix(vec3(0.060, 0.061, 0.063), tA * 0.6, 0.8) * (0.8 + 0.4 * (n2.b * 0.6 + n1.g * 0.4));
         vec3 gc = mix(earth, paved, cls.r);
         float gmask = smoothstep(0.42, 0.56, cls.g + (n3.r - 0.5) * 0.35 + (n2.b - 0.5) * 0.25);
         gc = mix(gc, grass * (0.8 + 0.5 * n3.g), gmask);
@@ -411,8 +416,8 @@ export function build(DATA, ctx) {
     for (const [ox, oy, oz, s] of [[0, 0.95, 0, 0.78], [0.5, 0.6, 0.15, 0.6], [-0.42, 0.66, 0.3, 0.58], [0.05, 0.55, -0.5, 0.6], [-0.2, 1.3, -0.1, 0.5], [0.3, 1.2, 0.3, 0.45]]) {
       let g = new THREE.IcosahedronGeometry(s, 1); g.deleteAttribute('uv'); g.deleteAttribute('normal'); g = mergeVertices(g, 1e-4);
       const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.8 + 0.4 * r(); p.setXYZ(i, p.getX(i) * k + ox, p.getY(i) * k * 0.85 + oy, p.getZ(i) * k + oz); }
-      g.computeVertexNormals(); parts.push(g.toNonIndexed()); }
-    crown = mergeGeometries(parts); crown.computeVertexNormals(); }  const tmat = std({ color: 0xffffff, roughness: 0.95 });
+      g.computeVertexNormals(); parts.push(g); }
+    crown = mergeGeometries(parts); }  const tmat = std({ color: 0xffffff, roughness: 0.95 });
   tmat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= 0.4 + 0.95 * smoothstep(-0.3, 1.0, normalize(vNormal).y * 0.5 + 0.5);'); };
   const trees = new THREE.InstancedMesh(crown, tmat, DATA.trees.length), trunkPos = [];
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S3 = new THREE.Vector3(), col = new THREE.Color();
@@ -441,7 +446,9 @@ export function build(DATA, ctx) {
   const heads = new THREE.InstancedMesh(new THREE.BoxGeometry(1.3, 0.2, 0.5), headM, lampPos.length);
   const glowM = new THREE.MeshBasicMaterial({ map: TX.glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, fog: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   const glowG = new THREE.PlaneGeometry(26, 26); glowG.rotateX(-Math.PI / 2);
-  const glows = new THREE.InstancedMesh(glowG, glowM, lampPos.length);
+  const glows = new THREE.InstancedMesh(glowG, glowM, lampPos.length + floodPos.length);
+  { const fh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), headM, Math.max(1, floodPos.length)); const fs = new THREE.Vector3(0.62, 1, 0.62);
+    floodPos.forEach((p, i) => { M4.makeTranslation(p[0], p[2], p[1]); fh.setMatrixAt(i, M4); M4.compose(V.set(p[0], 0.12, p[1]), Q.identity(), fs); glows.setMatrixAt(lampPos.length + i, M4); }); fh.name = 'floods'; root.add(fh); }
   lampPos.forEach((p, i) => {
     M4.makeTranslation(p[0], 0, p[1]); poles.setMatrixAt(i, M4);
     M4.makeTranslation(p[0], 9, p[1]); heads.setMatrixAt(i, M4);

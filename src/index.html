@@ -76,7 +76,7 @@
   <div class="row">视角</div><div id="views" class="btns"></div>
   <div class="row">分区</div><div id="zones" class="btns"></div>
   <div class="row">图层</div>
-  <div><label class="ck"><input id="lyLabels" type="checkbox" checked>栋号</label><label class="ck"><input id="lyZones" type="checkbox" checked>分区名</label><label class="ck"><input id="lyTrees" type="checkbox" checked>树木</label><label class="ck"><input id="lyRoads" type="checkbox" checked>道路标线</label><label class="ck"><input id="lyWalls" type="checkbox" checked>围墙大门</label><label class="ck"><input id="lyCars" type="checkbox" checked>车辆</label><label class="ck"><input id="lyShadow" type="checkbox" checked>阴影</label><label class="ck"><input id="lyAO" type="checkbox" checked>环境光遮蔽</label><label class="ck"><input id="lyGrade" type="checkbox" checked>胶片调色</label></div>
+  <div><label class="ck"><input id="lyLabels" type="checkbox" checked>栋号</label><label class="ck"><input id="lyZones" type="checkbox" checked>分区名</label><label class="ck"><input id="lyTrees" type="checkbox" checked>树木</label><label class="ck"><input id="lyRoads" type="checkbox" checked>道路标线</label><label class="ck"><input id="lyWalls" type="checkbox" checked>围墙大门</label><label class="ck"><input id="lyCars" type="checkbox" checked>车辆</label><label class="ck"><input id="lyShadow" type="checkbox" checked>阴影</label><label class="ck"><input id="lyAO" type="checkbox" checked>环境光遮蔽</label><label class="ck"><input id="lyGrade" type="checkbox" checked>胶片调色</label><label class="ck"><input id="lyPerf" type="checkbox">性能数据</label></div>
   <div class="row">查找栋号</div><input id="search" type="text" placeholder="例如 K07，回车" style="width:150px">
 </div>
 <div id="info" class="panel"></div>
@@ -85,6 +85,7 @@
 <div id="fcards"></div>
 <div id="trace" class="panel"></div>
 <div id="twin" class="panel"></div>
+<div id="perf" class="panel" style="display:none;left:50%;bottom:44px;transform:translateX(-50%);padding:5px 12px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;z-index:6">正在测量…</div>
 <div id="compass"><div id="needle"><b>N</b></div></div>
 <div id="hint" class="panel">左键拖动平移 · 右键拖动旋转 · 滚轮缩放 · 单击楼栋看信息 · 双击飞到楼栋</div>
 <script src="app.js"></script>

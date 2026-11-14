@@ -448,6 +448,10 @@ export function signTex(text) {                                // building numbe
   const [c, g] = mk(64 * text.length + 32, 96); g.font = '900 86px "Arial Black","Segoe UI",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = '#27458f'; g.fillText(text, c.width / 2, 52); const t = tex(c, true, false); t.anisotropy = 8; return t;
 }
+export function ribs() {                                      // bump map of profiled metal sheeting: one rib every 0.25 m (48 m per repeat)
+  const [c, g] = mk(2048, 4); for (let x = 0; x < 2048; x++) { const p = (x / 2048 * 96) % 1, v = 128 + 90 * Math.sin(p * 6.2832); g.fillStyle = grey(v); g.fillRect(x, 0, 1, 4); }
+  const t = tex(c, false); t.anisotropy = 16; return t;
+}
 export function innerMarks() {                                // campus roads: white edge lines + dashed centre line (tile = 12 m)
   const W = 128, H = 256, [c, g] = mk(W, H); g.clearRect(0, 0, W, H); g.fillStyle = 'rgba(232,232,224,0.8)';
   g.fillRect(3, 0, 2.5, H); g.fillRect(W - 5.5, 0, 2.5, H); g.fillRect(W / 2 - 1.5, 0, 3, H * 0.45);

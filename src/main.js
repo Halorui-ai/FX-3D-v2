@@ -7,6 +7,10 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import DATA from './data/campus.json';
 import groundUrl from './data/ground.png';
+import skyHdr from './assets/sky.hdr';
+import asphUrl from './assets/asphalt_diff.jpg';
+import asphNUrl from './assets/asphalt_nor.jpg';
+import concUrl from './assets/concrete_diff.jpg';
 import { build } from './builder.js';
 import { Environment, WEATHER } from './env.js';
 import { Twin } from './twin/twin.js';
@@ -36,11 +40,14 @@ controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
 
 // ---------------------------------------------------------------- world
 const groundTex = new THREE.TextureLoader().load(groundUrl);
-const W = build(DATA, { groundTex });
+const TL = new THREE.TextureLoader();
+const W = build(DATA, { groundTex, tex: { asph: TL.load(asphUrl), asphN: TL.load(asphNUrl), conc: TL.load(concUrl) } });
 W.root.rotation.y = -THETA;                    // campus grid -> true north (north = -z)
 scene.add(W.root);
 W.root.updateMatrixWorld(true);
 const env = new Environment(renderer, scene);
+try { env.setHDRI(skyHdr); } catch (e) { console.warn('sky HDRI not used', e); }
+renderer.info.autoReset = false;
 const toWorld = (u, s, y = 0) => new THREE.Vector3(u, y, s).applyMatrix4(W.root.matrixWorld);
 let twin = null, grade = null;
 const traffic = new Traffic(DATA, W.root);
@@ -105,6 +112,7 @@ $('lyTrees').onchange = (e) => { W.trees.visible = e.target.checked; };
 $('lyRoads').onchange = (e) => { W.roadsG.visible = e.target.checked; };
 $('lyWalls').onchange = (e) => { W.site.walls.visible = e.target.checked; };
 $('lyCars').onchange = (e) => { W.site.vehicles.visible = traffic.group.visible = e.target.checked; };
+$('lyPerf').onchange = (e) => { $('perf').style.display = e.target.checked ? 'block' : 'none'; };
 $('lyGrade').onchange = (e) => { if (grade) grade.enabled = e.target.checked; };
 $('lyAO').onchange = (e) => { if (gtao) gtao.enabled = e.target.checked; };
 $('lyShadow').onchange = (e) => { env.sun.castShadow = e.target.checked; };
@@ -170,6 +178,7 @@ setTime(hash.t ? +hash.t : 10);
 if (hash.labels === '0') { W.labels.visible = false; $('lyLabels').checked = false; }
 if (hash.zl === '0') { W.zoneLabels.visible = false; $('lyZones').checked = false; }
 if (hash.ui === '0') document.body.classList.add('noui');
+if (hash.perf === '1') { $('perf').style.display = 'block'; $('lyPerf').checked = true; }
 if (hash.cars === '0') { traffic.group.visible = false; W.site.vehicles.visible = false; $('lyCars').checked = false; }
 if (hash.walls === '0') { W.site.walls.visible = false; $('lyWalls').checked = false; }
 if (hash.zone) zoneView(decodeURIComponent(hash.zone), 0);
@@ -178,7 +187,7 @@ else flyTo(...VIEWS[hash.view || 'oblique'](), 0);
 if (hash.twin) { const b = DATA.buildings.find((x) => x.id === hash.twin.toUpperCase()); if (b && twin.open(b, true)) { if (hash.floor) twin.setFloor(+hash.floor - 1); if (hash.gate !== undefined) { const gs = twin.data().byBld.get(b.id); if (hash.gate === 'late') { const g = gs.find((x) => twin.stats.S.get(x.id).lateList.some((y) => twin.data().gates.get(y.o.from).zone !== b.zone)) || gs.find((x) => twin.stats.S.get(x.id).lateList.length); if (g) twin.selectGate(g.id); } else if (gs[+hash.gate]) twin.selectGate(gs[+hash.gate].id); if (hash.order !== undefined && twin.gateSel) { const s = twin.stats.S.get(twin.gateSel), L = [...s.lateList, ...s.incList, ...s.unrecvList]; if (L[+hash.order]) twin.selectOrder(L[+hash.order].o.id); } } if (hash.cam) { const v = hash.cam.split(',').map(Number); flyTo(toWorld(v[0], v[1], v[2]), toWorld(v[3], v[4], v[5] || 0), 0); } else if (twin.orderSel) { fly = null; const r = twin.route.box, c = r.getCenter(new THREE.Vector3()), sz = r.getSize(new THREE.Vector3()), d = Math.max(sz.x * 1.0, sz.z * 1.45, 260) + 140, w = toWorld(c.x - d * 0.19, c.z + d * 0.04, 0); flyTo(w.clone().add(new THREE.Vector3(-0.1 * d, 0.82 * d, 0.56 * d)), w, 0); } else { fly = null; twin.frame(0); } } }
 
 const clock = new THREE.Clock();
-let frames = 0;
+let frames = 0, fpsN = 0, fpsT = 0;
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.1);
@@ -198,7 +207,9 @@ function loop() {
   const gl = dist < 1100 && $('lyLabels').checked && W.site.walls.visible && !twin.active; if (W.site.gateLabels.visible !== gl) W.site.gateLabels.visible = gl;
   const zl = dist > 1300 && $('lyZones').checked && !twin.active; if (W.zoneLabels.visible !== zl) W.zoneLabels.visible = zl;
   $('needle').style.transform = `rotate(${controls.getAzimuthalAngle() * 180 / Math.PI}deg)`;
+  renderer.info.reset();
   if (composer) composer.render(dt); else renderer.render(scene, camera);
+  fpsN++; fpsT += dt; if (fpsT >= 0.5) { if ($('perf').style.display === 'block') $('perf').textContent = ` 帧/秒　绘制  次　三角形  百万　贴图 `; fpsN = 0; fpsT = 0; }
   if (frames === 39 && hash.shot) console.log('render-info', JSON.stringify({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures }));
   if (++frames === 40) { document.title = '富士康郑州厂区 3D · ready'; document.body.dataset.ready = '1'; }
 }
